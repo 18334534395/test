@@ -1,4 +1,4 @@
-1：启动相关服务，hadoop,hive
+aaaaa
 	start-all.sh
 	/export/server/hive/bin/hive --service metastore &
 	/export/server/hive/bin/hive --service hive2server &
