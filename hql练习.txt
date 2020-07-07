@@ -1,5 +1,5 @@
-sssss
-	start-all.sh
+dddd
+	aaaaaaaaaaaaaaaaaa
 	/export/server/hive/bin/hive --service metastore &
 	/export/server/hive/bin/hive --service hive2server &
 	/export/server/hive/bin/beeline 
