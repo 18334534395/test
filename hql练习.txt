@@ -1,0 +1,594 @@
+1：启动相关服务，hadoop,hive
+	start-all.sh
+	/export/server/hive/bin/hive --service metastore &
+	/export/server/hive/bin/hive --service hive2server &
+	/export/server/hive/bin/beeline 
+	! connect jdbc:hive2://node0:10000
+2.构建数据（详见附件），创建表
+	create database school;
+	create table student(s_id string,s_name string,s_birth string,s_sex string)row format delimited fields terminated by "\t";
+	create table course (c_id string,c_name string,t_id string)row format delimited fields terminated by "\t";
+	create table teacher(t_id string,t_name string)row format delimited fields terminated by "\t";
+	create table score(s_id string,c_id string,s_score int) row format delimited fields terminated by '\t';
+	show tables;(显示创建的表)
+	导入数据：/export/data/hivedatas
+	load data local inpath"/export/data/hivedatas/student.txt" into table student;
+	load data local inpath"/export/data/hivedatas/course.txt" into table course;
+	load data local inpath"/export/data/hivedatas/teacher.txt" into table teacher;
+	load data local inpath"/export/data/hivedatas/score.txt" into table score;
+	查看数据： selec * from student;
+3.语句练习：
+	1.查询"01"课程比"02"课程成绩高的学生的信息 及课程分数:！！
+select student.*,a.s_score as 01_score,b.s_score as 02_score from student join score a on student.s_id=a.s_id and a.c_id='01' left join score b on student.s_id=b.s_id and b.c_id='02' where  a.s_score>b.s_score;
+	
+	+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+	| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | 01_score  | 02_score  |
+	+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+	| 02            | 钱电              | 1990-12-21       | 男              | 70        | 60        |
+	| 04            | 李云              | 1990-08-06       | 男              | 50        | 30        |
+	+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+	
+select student.*,s1.s_score,s2.s_score from student join (select s_id,s_score from score where c_id = "01" )s1 on student.s_id = s1.s_id  join (select s_id,s_score from score where c_id = "02" )s2 on student.s_id = s2.s_id where s1.s_score > s2.s_score;
+
+	+---------------+-----------------+------------------+----------------+-------------+-------------+--+
+	| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | s1.s_score  | s2.s_score  |
+	+---------------+-----------------+------------------+----------------+-------------+-------------+--+
+	| 02            | 钱电              | 1990-12-21       | 男              | 70          | 60          |
+	| 04            | 李云              | 1990-08-06       | 男              | 50          | 30          |
+	+---------------+-----------------+------------------+----------------+-------------+-------------+--+
+	2.查询"01"课程比"02"课程成绩低的学生的信息及课程分数:
+	select student.*,a.s_score as 01_score,b.s_score as 02_score
+		from student
+		join score a on student.s_id=a.s_id and a.c_id='01'
+		left join score b on student.s_id=b.s_id and b.c_id='02'
+		where a.s_score<b.s_score;
+		
+		+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+		| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | 01_score  | 02_score  |
+		+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+		| 01            | 赵雷              | 1990-01-01       | 男              | 80        | 90        |
+		| 05            | 周梅              | 1991-12-01       | 女              | 76        | 87        |
+		+---------------+-----------------+------------------+----------------+-----------+-----------+--+
+		
+		
+
+	3.查询平均成绩大于等于60分的同学的学生编号和学生姓名和平均成绩:
+		select student.s_id,student.s_name,temp.myavg from student inner join (select s_id,avg(s_score) as myavg from score group by s_id having avg(s_score)>60) temp on student.s_id = temp.s_id;
+		+---------------+-----------------+--------------------+--+
+		| student.s_id  | student.s_name  |     temp.myavg     |
+		+---------------+-----------------+--------------------+--+
+		| 01            | 赵雷              | 89.66666666666667  |
+		| 02            | 钱电              | 70.0               |
+		| 03            | 孙风              | 80.0               |
+		| 05            | 周梅              | 81.5               |
+		| 07            | 郑竹              | 93.5               |
+		+---------------+-----------------+--------------------+--+
+		
+		select student.s_id ,student.s_name,avg(score.s_score) from student join score on student.s_id = score.s_id group by student.s_id,student.s_name having avg(score.s_score) >= 60; 
+	
+	4.查询平均成绩小于60分的同学的学生编号和学生姓名和平均成绩:(包括有成绩的和无成绩的)！！！
+		select  score.s_id,student.s_name,round(avg (score.s_score),1) as avgScore from student
+		inner join score on student.s_id=score.s_id
+		group by score.s_id,student.s_name
+		having avg (score.s_score) < 60
+		union all
+		select  s2.s_id,s2.s_name,0 as avgScore from student s2
+		where s2.s_id not in
+    (select distinct sc2.s_id from score sc2);
+		
+		+-----------+-------------+---------------+--+
+		| _u1.s_id  | _u1.s_name  | _u1.avgscore  |
+		+-----------+-------------+---------------+--+
+		| 04        | 李云          | 33.3          |
+		| 06        | 吴兰          | 32.5          |
+		| 08        | 王菊          | 0.0           |
+		+-----------+-------------+---------------+--+
+	5.查询所有同学的学生编号、学生姓名、选课总数、所有课程的总成绩:
+	select student.s_id,student.s_name,count(score.c_id),sum(score.s_score) from student left join  score on student.s_id = score.s_id group by student.s_id,student.s_name; 
+	
+		+---------------+-----------------+------+-------+--+
+		| student.s_id  | student.s_name  | _c2  |  _c3  |
+		+---------------+-----------------+------+-------+--+
+		| 01            | 赵雷              | 3    | 269   |
+		| 02            | 钱电              | 3    | 210   |
+		| 03            | 孙风              | 3    | 240   |
+		| 04            | 李云              | 3    | 100   |
+		| 05            | 周梅              | 2    | 163   |
+		| 06            | 吴兰              | 2    | 65    |
+		| 07            | 郑竹              | 2    | 187   |
+		| 08            | 王菊              | 0    | NULL  |
+		+---------------+-----------------+------+-------+--+
+
+	6.查询"李"姓老师的数量:
+	select t_name,count(1) from teacher  where t_name like '李%' group by t_name;
+	+---------+------+--+
+	| t_name  | _c1  |
+	+---------+------+--+
+	| 李四      | 1    |
+	+---------+------+--+
+	
+	
+	7.查询学过"张三"老师授课的同学的信息:
+	select student.*,course.c_name from student join score on student.s_id = score.s_id join course on course.c_id = score.c_id join teacher on  teacher.t_id = course.t_id where teacher.t_name = "张三";
+		+---------------+-----------------+------------------+----------------+----------------+--+
+		| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | course.c_name  |
+		+---------------+-----------------+------------------+----------------+----------------+--+
+		| 01            | 赵雷              | 1990-01-01       | 男              | 数学             |
+		| 02            | 钱电              | 1990-12-21       | 男              | 数学             |
+		| 03            | 孙风              | 1990-05-20       | 男              | 数学             |
+		| 04            | 李云              | 1990-08-06       | 男              | 数学             |
+		| 05            | 周梅              | 1991-12-01       | 女              | 数学             |
+		| 07            | 郑竹              | 1989-07-01       | 女              | 数学             |
+		+---------------+-----------------+------------------+----------------+----------------+--+
+		
+	8.查询没学过"张三"老师授课的同学的信息:！！！
+		select mystu.* from student mystu where mystu.s_id not in(select student.s_id from student join score on student.s_id = score.s_id join course on course.c_id = score.c_id join teacher on  teacher.t_id = course.t_id where teacher.t_name = "张三");
+		
+		+-------------+---------------+----------------+--------------+--+
+		| mystu.s_id  | mystu.s_name  | mystu.s_birth  | mystu.s_sex  |
+		+-------------+---------------+----------------+--------------+--+
+		| 06          | 吴兰            | 1992-03-01     | 女            |
+		| 08          | 王菊            | 1990-01-20     | 女            |
+		+-------------+---------------+----------------+--------------+--+
+	9、查询学过编号为"01"并且也学过编号为"02"的课程的同学的信息:	
+		select student.* from student join score s1 on student.s_id = s1.s_id and s1.c_id = "01" join score s2 on student.s_id = s2.s_id and  s2.c_id = "02";
+		+---------------+-----------------+------------------+----------------+--+
+		| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  |
+		+---------------+-----------------+------------------+----------------+--+
+		| 01            | 赵雷              | 1990-01-01       | 男              |
+		| 02            | 钱电              | 1990-12-21       | 男              |
+		| 03            | 孙风              | 1990-05-20       | 男              |
+		| 04            | 李云              | 1990-08-06       | 男              |
+		| 05            | 周梅              | 1991-12-01       | 女              |
+		+---------------+-----------------+------------------+----------------+--+
+
+	10、查询学过编号为"01"但是没有学过编号为"02"的课程的同学的信息:！！！
+			select student.* from student
+		join (select s_id from score where c_id =1 )tmp1
+			on student.s_id=tmp1.s_id
+		left join (select s_id from score where c_id =2 )tmp2
+			on student.s_id =tmp2.s_id
+		where tmp2.s_id is null;
+	
+		+---------------+-----------------+------------------+----------------+--+
+		| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  |
+		+---------------+-----------------+------------------+----------------+--+
+		| 06            | 吴兰              | 1992-03-01       | 女              |
+		+---------------+-----------------+------------------+----------------+--+
+	
+	
+	11、查询没有学全所有课程的同学的信息:	
+	select student.s_id,student.s_name from student left join score on score.s_id = student.s_id group by student.s_id,student.s_name having count(score.c_id) < 3;
+	(select count(1) from course)写一起，会报错。。。。
+	+---------------+-----------------+--+
+	| student.s_id  | student.s_name  |
+	+---------------+-----------------+--+
+	| 05            | 周梅              |
+	| 06            | 吴兰              |
+	| 07            | 郑竹              |
+	| 08            | 王菊              |
+	+---------------+-----------------+--+
+	12.查询至少有一门课与学号为"01"的同学所学相同的同学的信息:
+	
+	select distinct student.s_id,student.s_name from student left join score myscore on myscore.s_id = student.s_id where student.s_id != "01" and myscore.c_id in(select c_id from score where s_id = "01");
+	+---------------+-----------------+--+
+	| student.s_id  | student.s_name  |
+	+---------------+-----------------+--+
+	| 02            | 钱电              |
+	| 03            | 孙风              |
+	| 04            | 李云              |
+	| 05            | 周梅              |
+	| 06            | 吴兰              |
+	| 07            | 郑竹              |
+	+---------------+-----------------+--+
+	
+	+--------------------------------------+----------------------------+-----------------------------+---------------------------+--+
+	| (. (tok_table_or_col student) s_id)  | (tok_table_or_col s_name)  | (tok_table_or_col s_birth)  | (tok_table_or_col s_sex)  |
+	+--------------------------------------+----------------------------+-----------------------------+---------------------------+--+
+	| 02                                   | 钱电                         | 1990-12-21                  | 男                         |
+	| 03                                   | 孙风                         | 1990-05-20                  | 男                         |
+	| 04                                   | 李云                         | 1990-08-06                  | 男                         |
+	| 05                                   | 周梅                         | 1991-12-01                  | 女                         |
+	| 06                                   | 吴兰                         | 1992-03-01                  | 女                         |
+	| 07                                   | 郑竹                         | 1989-07-01                  | 女                         |
+	+--------------------------------------+----------------------------+-----------------------------+---------------------------+--+
+	
+	
+	13.查询和"01"号的同学学习的课程完全相同的其他同学的信息:
+	select student.*,tmp1.course_id from student join (select s_id ,concat_ws('|', collect_set(c_id)) course_id from score group by s_id having s_id not in ("01"))tmp1 on student.s_id = tmp1.s_id join (select concat_ws('|', collect_set(c_id)) course_id2 from score  where s_id=1)tmp2 on tmp1.course_id = tmp2.course_id2;
+	  
+	+---------------+-----------------+------------------+----------------+-----------------+--+
+	| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | tmp1.course_id  |
+	+---------------+-----------------+------------------+----------------+-----------------+--+
+	| 02            | 钱电              | 1990-12-21       | 男              | 01|02|03        |
+	| 03            | 孙风              | 1990-05-20       | 男              | 01|02|03        |
+	| 04            | 李云              | 1990-08-06       | 男              | 01|02|03        |
+	+---------------+-----------------+------------------+----------------+-----------------+--+
+	分步完成：
+	SELECT CONCAT_WS("|",collect_set(c_id)) AS class1 FROM score WHERE s_id = "01";
+	+-----------+--+
+	|  class1   |
+	+-----------+--+
+	| 01|02|03  |
+	+-----------+--+
+	
+	SELECT	s_id,CONCAT_WS("|",collect_set(c_id)) AS class2  FROM score GROUP BY s_id
+HAVING score.s_id NOT IN("01");
+	+-------+-----------+--+
+	| s_id  |  class2   |
+	+-------+-----------+--+
+	| 02    | 01|02|03  |
+	| 03    | 01|02|03  |
+	| 04    | 01|02|03  |
+	| 05    | 01|02     |
+	| 06    | 01|03     |
+	| 07    | 02|03     |
+	+-------+-----------+--+
+	
+	+---------------+-----------------+------------------+----------------+--+
+	| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  |
+	+---------------+-----------------+------------------+----------------+--+
+	| 02            | 钱电              | 1990-12-21       | 男              |
+	| 03            | 孙风              | 1990-05-20       | 男              |
+	| 04            | 李云              | 1990-08-06       | 男              |
+	+---------------+-----------------+------------------+----------------+--+
+
+
+	14、查询没学过"张三"老师讲授的任一门课程的学生姓名:(同第8)
+	select mystu.* from student mystu where mystu.s_id not in(select student.s_id from student join score on student.s_id = score.s_id join course on course.c_id = score.c_id join teacher on  teacher.t_id = course.t_id where teacher.t_name = "张三");
+
+		+-------------+---------------+----------------+--------------+--+
+		| mystu.s_id  | mystu.s_name  | mystu.s_birth  | mystu.s_sex  |
+		+-------------+---------------+----------------+--------------+--+
+		| 06          | 吴兰            | 1992-03-01     | 女            |
+		| 08          | 王菊            | 1990-01-20     | 女            |
+		+-------------+---------------+----------------+--------------+--+
+		
+			select s_id from score
+          join (select c_id from course join  teacher on course.t_id=teacher.t_id and t_name='张三')tmp2
+          on score.c_id=tmp2.c_id 
+			+-------+--+
+			| s_id  |
+			+-------+--+
+			| 01    |
+			| 02    |
+			| 03    |
+			| 04    |
+			| 05    |
+			| 07    |
+			+-------+--+
+			
+			select student.* from student
+  left join (select s_id from score
+          join (select c_id from course join  teacher on course.t_id=teacher.t_id and t_name='张三')tmp2
+          on score.c_id=tmp2.c_id )tmp
+  on student.s_id = tmp.s_id
+  where tmp.s_id is null;
+		答案在14开始。
+	
+	15、查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩:
+	select student.s_id,student.s_name,tmp.avg_score from  student
+inner join (select s_id from score
+      where s_score<60
+        group by score.s_id having count(s_id)>1)tmp2
+on student.s_id = tmp2.s_id
+left join (
+    select s_id,round(AVG (score.s_score)) avg_score
+      from score group by s_id)tmp
+      on tmp.s_id=student.s_id;
++---------------+-----------------+----------------+--+
+| student.s_id  | student.s_name  | tmp.avg_score  |
++---------------+-----------------+----------------+--+
+| 04            | 李云              | 33.0           |
+| 06            | 吴兰              | 33.0           |
++---------------+-----------------+----------------+--+
+	
+	16、检索"01"课程分数小于60，按分数降序排列的学生信息:
+	select student.*,score.s_score from student join score on score.s_id = student.s_id where score.c_id = "01" and score.s_score < 60 order by score.s_score desc;
++---------------+-----------------+------------------+----------------+----------------+--+
+| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | score.s_score  |
++---------------+-----------------+------------------+----------------+----------------+--+
+| 04            | 李云              | 1990-08-06       | 男              | 50             |
+| 06            | 吴兰              | 1992-03-01       | 女              | 31             |
++---------------+-----------------+------------------+----------------+----------------+--+
+	
+	17、按平均成绩从高到低显示所有学生的所有课程的成绩以及平均成绩:
+	select s_id,round(avg(s_score),2) myavg  from score group by s_id order by  myavg desc; 显示平均成绩
+	select student.s_id,student.s_name,course.c_name, score.s_score, temp.myavg from student left join score on score.s_id = student.s_id join (select s_id,round(avg(s_score),2) myavg  from score group by s_id) temp on temp.s_id = student.s_id  join course on score.c_id = course.c_id order by  temp.myavg desc;
+	+-------+--------+--+
+	| s_id  | myavg  |
+	+-------+--------+--+
+	| 07    | 93.5   |
+	| 01    | 89.67  |
+	| 05    | 81.5   |
+	| 03    | 80.0   |
+	| 02    | 70.0   |
+	| 04    | 33.33  |
+	| 06    | 32.5   |
+	+-------+--------+--+
+	
+	+---------------+-----------------+----------------+----------------+-------------+--+
+	| student.s_id  | student.s_name  | course.c_name  | score.s_score  | temp.myavg  |
+	+---------------+-----------------+----------------+----------------+-------------+--+
+	| 07            | 郑竹              | 英语             | 98             | 93.5        |
+	| 07            | 郑竹              | 数学             | 89             | 93.5        |
+	| 01            | 赵雷              | 语文             | 80             | 89.67       |
+	| 01            | 赵雷              | 英语             | 99             | 89.67       |
+	| 01            | 赵雷              | 数学             | 90             | 89.67       |
+	| 05            | 周梅              | 数学             | 87             | 81.5        |
+	| 05            | 周梅              | 语文             | 76             | 81.5        |
+	| 03            | 孙风              | 数学             | 80             | 80.0        |
+	| 03            | 孙风              | 语文             | 80             | 80.0        |
+	| 03            | 孙风              | 英语             | 80             | 80.0        |
+	| 02            | 钱电              | 英语             | 80             | 70.0        |
+	| 02            | 钱电              | 数学             | 60             | 70.0        |
+	| 02            | 钱电              | 语文             | 70             | 70.0        |
+	| 04            | 李云              | 数学             | 30             | 33.33       |
+	| 04            | 李云              | 语文             | 50             | 33.33       |
+	| 04            | 李云              | 英语             | 20             | 33.33       |
+	| 06            | 吴兰              | 英语             | 34             | 32.5        |
+	| 06            | 吴兰              | 语文             | 31             | 32.5        |
+	+---------------+-----------------+----------------+----------------+-------------+--+
+	
+	正确答案：
+	select a.s_id,tmp1.s_score as chinese,tmp2.s_score as math,tmp3.s_score as english,
+    round(avg (a.s_score),2) as avgScore
+from score a
+left join (select s_id,s_score  from score s1 where  c_id='01')tmp1 on  tmp1.s_id=a.s_id
+left join (select s_id,s_score  from score s2 where  c_id='02')tmp2 on  tmp2.s_id=a.s_id
+left join (select s_id,s_score  from score s3 where  c_id='03')tmp3 on  tmp3.s_id=a.s_id
+group by a.s_id,tmp1.s_score,tmp2.s_score,tmp3.s_score order by avgScore desc;
+	+---------+----------+-------+----------+-----------+--+
+	| a.s_id  | chinese  | math  | english  | avgscore  |
+	+---------+----------+-------+----------+-----------+--+
+	| 07      | NULL     | 89    | 98       | 93.5      |
+	| 01      | 80       | 90    | 99       | 89.67     |
+	| 05      | 76       | 87    | NULL     | 81.5      |
+	| 03      | 80       | 80    | 80       | 80.0      |
+	| 02      | 70       | 60    | 80       | 70.0      |
+	| 04      | 50       | 30    | 20       | 33.33     |
+	| 06      | 31       | NULL  | 34       | 32.5      |
+	+---------+----------+-------+----------+-----------+--+
+7 rows selected (5.669 seconds)
+	
+	18.查询各科成绩最高分、最低分和平均分：以如下形式显示：课程ID，课程name，最高分，最低分，平均分，及格率，中等率，优良率，优秀率:
+–及格为>=60，中等为：70-80，优良为：80-90，优秀为：>=90
+	select score.c_id,course.c_name, max(score.s_score) max,min(score.s_score) min, avg(score.s_score) avg,count(score.s_score) from score join course on score.c_id = course.c_id group by score.c_id,course.c_name;
+	select count(score.s_score) from score where score.s_score >= 60 group by score.c_id;
+	19、按各科成绩进行排序，并显示排名:
+	– row_number() over()分组排序功能(mysql没有该方法)
+	select score.c_id,score.s_score,row_number()over(partition by c_id order by s_score desc)from score;
+	+-------------+----------------+---------+--+
+| score.c_id  | score.s_score  | _wcol0  |
++-------------+----------------+---------+--+
+| 01          | 80             | 1       |
+| 01          | 80             | 2       |
+| 01          | 76             | 3       |
+| 01          | 70             | 4       |
+| 01          | 50             | 5       |
+| 01          | 31             | 6       |
+| 02          | 90             | 1       |
+| 02          | 89             | 2       |
+| 02          | 87             | 3       |
+| 02          | 80             | 4       |
+| 02          | 60             | 5       |
+| 02          | 30             | 6       |
+| 03          | 99             | 1       |
+| 03          | 98             | 2       |
+| 03          | 80             | 3       |
+| 03          | 80             | 4       |
+| 03          | 34             | 5       |
+| 03          | 20             | 6       |
++-------------+----------------+---------+--+
+	select score.c_id,score.s_score,row_number() over(partition by score.c_id order by score.s_score desc) rn from score;
+	
+	– 20、查询学生的总成绩并进行排名:
+	
+	+---------------+-----------------+--------+--+
+	| student.s_id  | student.s_name  | mysum  |
+	+---------------+-----------------+--------+--+
+	| 01            | 赵雷              | 269    |
+	| 03            | 孙风              | 240    |
+	| 02            | 钱电              | 210    |
+	| 07            | 郑竹              | 187    |
+	| 05            | 周梅              | 163    |
+	| 04            | 李云              | 100    |
+	| 06            | 吴兰              | 65     |
+	| 08            | 王菊              | NULL   |
+	+---------------+-----------------+--------+--+
+	
+	select score.s_id,s_name,sum(s_score) sumscore,row_number()over(order by sum(s_score) desc) Ranking from student left join score on score.s_id = student.s_id group by score.s_id,s_name order by sumscore desc;
+ >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+	21、查询不同老师所教不同课程平均分从高到低显示:
+	select from score group by 
+	22、查询所有课程的成绩第2名到第3名的学生信息及该课程成绩:
+	23、统计各科成绩各分数段人数：课程编号,课程名称,[100-85],[85-70],[70-60],[0-60]及所占百分比
+	24、查询学生平均成绩及其名次:
+	select score.s_id,avg(s_score) myavg from score group by s_id order by myavg desc;
+	row_number();
+	
+	
+	25、查询各科成绩前三名的记录
+	//select student.s_name,c_name from student join score on student.s_id = score.s_id join course  on course.c_id = score.c_id join
+	
+	???select score.s_id from(select score.s_id,row_number()over(partition by score.c_id order by s_score desc) ranking from score) temp where ranking >=3;
+
+	26、查询每门课程被选修的学生数:
+	select course.c_name,score.c_id,count(1) from score join course on course.c_id = score.c_id group by score.c_id,course.c_name;
+	+----------------+-------------+------+--+
+	| course.c_name  | score.c_id  | _c2  |
+	+----------------+-------------+------+--+
+	| 语文             | 01          | 6    |
+	| 数学             | 02          | 6    |
+	| 英语             | 03          | 6    |
+	+----------------+-------------+------+--+
+	
+	27、查询出只有两门课程的全部学生的学号和姓名:
+	select student.s_id,student.s_name,count(1) number from score join student on student.s_id = score.s_id group by student.s_id,student.s_name having number = 2;
+	+---------------+-----------------+---------+--+
+	| student.s_id  | student.s_name  | number  |
+	+---------------+-----------------+---------+--+
+	| 05            | 周梅              | 2       |
+	| 06            | 吴兰              | 2       |
+	| 07            | 郑竹              | 2       |
+	+---------------+-----------------+---------+--+
+	28、查询男生、女生人数:
+	 select s_sex,count(1) sex from student group by s_sex;
+	29、查询名字中含有"风"字的学生信息:
+	select * from student where s_name like "%风%";
+	30、查询同名同性学生名单，并统计同名人数:
+	SELECT a.s_id,a.s_name,a.s_sex FROM student a JOIN student b WHERE a.s_name = b.s_name AND a.s_sex = b.s_sex AND a.s_id <> b.s_id;
+	
+	
+	31、查询1990年出生的学生名单:
+	select * from student where s_birth like '1990%';
+	32、查询每门课程的平均成绩，结果按平均成绩降序排列，平均成绩相同时，按课程编号升序排列:
+	  select c_id,avg(s_score) myavg  from score group by c_id order by myavg desc,c_id asc;
+	  +-------+--------------------+--+
+	| c_id  |       myavg        |
+	+-------+--------------------+--+
+	| 02    | 72.66666666666667  |
+	| 03    | 68.5               |
+	| 01    | 64.5               |
+	+-------+--------------------+--+
+	33、查询平均成绩大于等于85的所有学生的学号、姓名和平均成绩:
+	select score.s_id,student.s_name,avg(score.s_score) myavg from student join score on student.s_id = score.s_id group by score.s_id,student.s_name having myavg >=85;
+	34、查询课程名称为"数学"，且分数低于60的学生姓名和分数:
+	select student.s_name,score.s_score from student left join score on student.s_id = score.s_id join course on score.c_id = course.c_id where course.c_name = '数学' and score.s_score < 60;
+	select student.s_name,score.s_score from student left join score on student.s_id = score.s_id join course on score.c_id = course.c_id and course.c_name = '数学' where score.s_score < 60;
+	35、查询所有学生的课程及分数情况
+	select student.s_id,student.s_name,sum(case course.c_name when '语文' then score.s_score else 0 end ) as chainese,sum(case course.c_name when '数学' then score.s_score else 0 end ) as math,sum(case course.c_name when '英语' then score.s_score else 0 end ) as english,sum(score.s_score) from student join score on score.s_id = student.s_id join course on course.c_id = score.c_id group by student.s_id,student.s_name;
+	
+/export/servers/flume
+	+-----------+-----------+-------+----------+-----------+--+
+	| a.s_name  | chainese  | math  | english  | sumscore  |
+	+-----------+-----------+-------+----------+-----------+--+
+	| 吴兰        | 31        | 0     | 34       | 65        |
+	| 周梅        | 76        | 87    | 0        | 163       |
+	| 孙风        | 80        | 80    | 80       | 240       |
+	| 李云        | 50        | 30    | 20       | 100       |
+	| 赵雷        | 80        | 90    | 99       | 269       |
+	| 郑竹        | 0         | 89    | 98       | 187       |
+	| 钱电        | 70        | 60    | 80       | 210       |
+	+-----------+-----------+-------+----------+-----------+--+
+	
+	
+	36、查询任何一门课程成绩在70分以上的学生姓名、课程名称和分数:
+select student.s_id as sid,student.s_name,course.c_name,score.s_score from student join score on student.s_id = score.s_id join course on course.c_id = score.c_id  
+left join
+(select distinct s_id from score where s_score <60)
+temp2 on temp2.s_id = student.s_id where temp2.s_id is null;
+	+------+-----------------+----------------+----------------+--+
+| sid  | student.s_name  | course.c_name  | score.s_score  |
++------+-----------------+----------------+----------------+--+
+| 01   | 赵雷              | 语文             | 80             |
+| 01   | 赵雷              | 数学             | 90             |
+| 01   | 赵雷              | 英语             | 99             |
+| 02   | 钱电              | 语文             | 70             |
+| 02   | 钱电              | 数学             | 60             |
+| 02   | 钱电              | 英语             | 80             |
+| 03   | 孙风              | 语文             | 80             |
+| 03   | 孙风              | 数学             | 80             |
+| 03   | 孙风              | 英语             | 80             |
+| 05   | 周梅              | 语文             | 76             |
+| 05   | 周梅              | 数学             | 87             |
+| 07   | 郑竹              | 数学             | 89             |
+| 07   | 郑竹              | 英语             | 98             |
++------+-----------------+----------------+----------------+--+
+
+	37、查询课程不及格的学生:
+	+---------+-------------+--------------+--+
+| s_name  | coursename  | tmp.s_score  |
++---------+-------------+--------------+--+
+| 李云      | 语文          | 50           |
+| 李云      | 数学          | 30           |
+| 李云      | 英语          | 20           |
+| 吴兰      | 语文          | 31           |
+| 吴兰      | 英语          | 34           |
++---------+-------------+--------------+--+
+	select  distinct student.s_name,score.s_score from student left join score on student.s_id = score.s_id  where s_score <60;
+	38、查询课程编号为01且课程成绩在80分以上的学生的学号和姓名:
+	select student.s_id,student.s_name from student join score on score.s_id = student.s_id where score.s_score >= 80 and score.c_id = "01";
+	39、求每门课程的学生人数:
+	select score.c_id,count(1) from score group by score.c_id;
+	+-------------+------+--+
+| score.c_id  | _c1  |
++-------------+------+--+
+| 01          | 6    |
+| 02          | 6    |
+| 03          | 6    |
++-------------+------+--+
+	40、查询选修"张三"老师所授课程的学生中，成绩最高的学生信息及其成绩:
+	+---------------+-----------------+------------------+----------------+--------------+----------------+--+
+| student.s_id  | student.s_name  | student.s_birth  | student.s_sex  | tmp3.c_name  | tmp3.maxscore  |
++---------------+-----------------+------------------+----------------+--------------+----------------+--+
+| 01            | 赵雷              | 1990-01-01       | 男              | 数学           | 90             |
++---------------+-----------------+------------------+----------------+--------------+----------------+--+
+
+select  score.s_id,course.c_name,score.s_score from score join course on score.c_id = course.c_id join teacher on teacher.t_id = course.t_id where teacher.t_name = "张三" order by score.s_score desc limit 1;
+	
+	
+	
+	
+	– 41、查询不同课程成绩相同的学生的学生编号、课程编号、学生成绩:
+	 select distinct a.s_id,a.c_id,a.s_score from score a join score b where a.c_id <> b.c_id and a.s_score = b.s_score;
+	 
+	 +---------+---------+------------+--+
+	| a.s_id  | a.c_id  | a.s_score  |
+	+---------+---------+------------+--+
+	| 01      | 01      | 80         |
+	| 02      | 03      | 80         |
+	| 03      | 01      | 80         |
+	| 03      | 02      | 80         |
+	| 03      | 03      | 80         |
+	+---------+---------+------------+--+
+	
+	– 42、查询每门课程成绩最好的前三名:
+	select s_id from(select s_id, row_number()over(partition by c_id order by s_score desc) as rank from score) temp where temp.rank <=3;
+	
+	+-----------+-----------+--------------+--------------+--+
+| _u1.s_id  | _u1.c_id  | _u1.s_score  | _u1.ranking  |
++-----------+-----------+--------------+--------------+--+
+| 03        | 01        | 80           | 1            |
+| 01        | 01        | 80           | 2            |
+| 05        | 01        | 76           | 3            |
+| 01        | 02        | 90           | 1            |
+| 07        | 02        | 89           | 2            |
+| 05        | 02        | 87           | 3            |
+| 01        | 03        | 99           | 1            |
+| 07        | 03        | 98           | 2            |
+| 03        | 03        | 80           | 3            |
++-----------+-----------+--------------+--------------+--+
+	
+
+	– 43、统计每门课程的学生选修人数（超过5人的课程才统计）:– 要求输出课程号和选修人数，查询结果按人数降序排列，若人数相同，按课程号升序排列
+		select c_id,count(c_id) cnum from score group by c_id having cnum >= 6 order by cnum desc ,c_id;
+		+-------+-------+--+
+		| c_id  | cnum  |
+		+-------+-------+--+
+		| 01    | 6     |
+		| 02    | 6     |
+		| 03    | 6     |
+		+-------+-------+--+
+		
+		– 44、检索至少选修两门课程的学生学号:
+		select s_id,count(1) as count1 from score group by s_id having count1 >=2
+		
+		– 45、查询选修了全部课程的学生信息:             
+		select s_id,count(1) as count1 from score group by s_id having count1 = 3;
+		–46、查询各学生的年龄(周岁): 按照出生日期来算，当前月日 < 出生年月的月日则，年龄减一
+
+47、查询本周过生日的学生:
+select * from student where weekofyear(CURRENT_DATE) =weekofyear(s_birth);
+
+– 48、查询下周过生日的学生:
+select * from student where weekofyear(CURRENT_DATE)+1 =weekofyear(s_birth);
+– 49、查询本月过生日的学生:
+select * from student where substring(s_birth,6,2) = substring(from_unixtime(unix_timestamp(),"yyyy-MM-dd"),6,2);=======
+substring(from_unixtime(unix_timestamp(),"yyyy-MM-dd"),6,2)
+from_unixtime(unix_timestamp(),"yyyy-MM-dd")
+ 50、查询12月份过生日的学生:
+ select s_name,s_sex,s_birth from student where substring(s_birth,6,2)='12';
+
+
+	
