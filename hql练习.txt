@@ -1,4 +1,4 @@
-aaaaa
+ccc
 	start-all.sh
 	/export/server/hive/bin/hive --service metastore &
 	/export/server/hive/bin/hive --service hive2server &
